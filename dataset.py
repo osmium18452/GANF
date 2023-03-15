@@ -73,7 +73,7 @@ def load_water(root, batch_size,label=False):
     data = data.rename(columns={"Normal/Attack":"label"})
     data.label[data.label!="Normal"]=1
     data.label[data.label=="Normal"]=0
-    data["Timestamp"] = pd.to_datetime(data["Timestamp"])
+    data["Timestamp"] = pd.to_datetime(data[" Timestamp"])
     data = data.set_index("Timestamp")
 
     #%%

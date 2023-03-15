@@ -4,5 +4,3 @@ do
         --seed=${seed}\
         --name=GANF_water_seed_${seed}
 done
-
-
