@@ -22,6 +22,8 @@ class GNN(nn.Module):
 
         h_n = self.lin_n(torch.einsum('nkld,kj->njld',h,A))
         h_r = self.lin_r(h[:,:,:-1])
+        # print(h_n.shape,h_r.shape)
+        # exit()
         h_n[:,:,1:] += h_r
         h = self.lin_2(F.relu(h_n))
 
@@ -34,6 +36,8 @@ class GANF(nn.Module):
         super(GANF, self).__init__()
 
         self.rnn = nn.LSTM(input_size=input_size,hidden_size=hidden_size,batch_first=True, dropout=dropout)
+        # print(self.rnn)
+        # exit()
         self.gcn = GNN(input_size=hidden_size, hidden_size=hidden_size)
         if model=="MAF":
             self.nf = MAF(n_blocks, input_size, hidden_size, n_hidden, cond_label_size=hidden_size, batch_norm=batch_norm,activation='tanh')
@@ -45,7 +49,11 @@ class GANF(nn.Module):
         return self.test(x, A).mean()
 
     def test(self, x, A):
-        # x: N X K X L X D 
+        # x: N X K X L X D
+        # N: batch size
+        # K: feature num
+        # L: time window size
+        # D: =1
         full_shape = x.shape
 
         # reshape: N*K, L, D
@@ -59,11 +67,17 @@ class GANF(nn.Module):
         h = self.gcn(h, A)
 
         # reshappe N*K*L,H
+        # print(h.shape,x.shape)
         h = h.reshape((-1,h.shape[3]))
         x = x.reshape((-1,full_shape[3]))
+        # print(h.shape,x.shape)
+        # exit()
 
         log_prob = self.nf.log_prob(x,h).reshape([full_shape[0],-1])#*full_shape[1]*full_shape[2]
+        # print(log_prob.shape)
         log_prob = log_prob.mean(dim=1)
+        # print(log_prob.shape)
+        # exit()
 
         return log_prob
     

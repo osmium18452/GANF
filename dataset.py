@@ -78,12 +78,18 @@ def load_water(root, batch_size,label=False):
 
     #%%
     feature = data.iloc[:,:51]
+    # print(feature.shape)
+    # print('type of feature',type(feature))
     mean_df = feature.mean(axis=0)
     std_df = feature.std(axis=0)
+    # print(mean_df)
+    # print(std_df)
 
     norm_feature = (feature-mean_df)/std_df
     norm_feature = norm_feature.dropna(axis=1)
     n_sensor = len(norm_feature.columns)
+    # print(n_sensor)
+    # exit()
 
     train_df = norm_feature.iloc[:int(0.6*len(data))]
     train_label = data.label.iloc[:int(0.6*len(data))]

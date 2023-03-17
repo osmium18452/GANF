@@ -1,6 +1,8 @@
 # %%
 import os
 import argparse
+import pickle
+
 import torch
 from models.GANF import GANF
 import numpy as np
@@ -60,15 +62,14 @@ if args.cuda:
 print("Loading dataset")
 from dataset import load_water
 
-train_loader, val_loader, test_loader, n_sensor = load_water(args.data_dir, args.batch_size)
+# train_loader, val_loader, test_loader, n_sensor = load_water(args.data_dir, args.batch_size)
+# pickle.dump((train_loader,val_loader,test_loader,n_sensor),open('water_data_loader.pkl','wb'))
+(train_loader,val_loader,test_loader,n_sensor)=pickle.load(open('water_data_loader.pkl','rb'))
 print(train_loader.dataset)
 print('\033[0;33m',type(train_loader),type(val_loader),type(test_loader),n_sensor,'\033[0m')
-# for x in train_loader:
-#     print(x.shape)
-# exit()
 
-rho = args.rho_init
-alpha = args.alpha_init
+c = args.rho_init
+lamda = args.alpha_init
 lambda1 = args.lambda1
 h_A_old = np.inf
 
@@ -108,8 +109,8 @@ if not os.path.exists(save_path):
 loss_best = 100
 
 for _ in range(max_iter):
-
-    while rho < rho_max:
+    print('max_iter',max_iter)
+    while c < rho_max:
         lr = args.lr
         optimizer = torch.optim.Adam([
             {'params': model.parameters(), 'weight_decay': args.weight_decay},
@@ -121,14 +122,14 @@ for _ in range(max_iter):
             loss_train = []
             epoch += 1
             model.train()
-            for x in train_loader:
-                print(x.shape)
+            for i,x in enumerate(train_loader):
+                # print(i,x.shape)
                 x = x.to(device)
 
                 optimizer.zero_grad()
                 loss = -model(x, A)
                 h = torch.trace(torch.matrix_exp(A * A)) - n_sensor
-                total_loss = loss + 0.5 * rho * h * h + alpha * h
+                total_loss = loss + 0.5 * c * h * h + lamda * h
 
                 total_loss.backward()
                 clip_grad_value_(model.parameters(), 1)
@@ -163,7 +164,7 @@ for _ in range(max_iter):
             print('Epoch: {}, train -log_prob: {:.2f}, test -log_prob: {:.2f}, roc_val: {:.4f}, roc_test: {:.4f} ,h: {}' \
                   .format(epoch, np.mean(loss_train), np.mean(loss_val), roc_val, roc_test, h.item()))
 
-        print('rho: {}, alpha {}, h {}'.format(rho, alpha, h.item()))
+        print('rho: {}, alpha {}, h {}'.format(c, lamda, h.item()))
         print('===========================================')
         torch.save(A.data, os.path.join(save_path, "graph_{}.pt".format(epoch)))
         torch.save(model.state_dict(), os.path.join(save_path, "{}_{}.pt".format(args.name, epoch)))
@@ -172,14 +173,15 @@ for _ in range(max_iter):
         torch.cuda.empty_cache()
 
         if h.item() > 0.5 * h_A_old:
-            rho *= 10
+            c *= 10
         else:
             break
 
     h_A_old = h.item()
-    alpha += rho * h.item()
+    lamda += c * h.item()
 
-    if h_A_old <= h_tol or rho >= rho_max:
+    print('\033[0;33mh and c',h_A_old,c,'\033[0m')
+    if h_A_old <= h_tol or c >= rho_max:
         break
 
 # %%
@@ -198,7 +200,7 @@ for _ in range(30):
         optimizer.zero_grad()
         loss = -model(x, A)
         h = torch.trace(torch.matrix_exp(A * A)) - n_sensor
-        total_loss = loss + 0.5 * rho * h * h + alpha * h
+        total_loss = loss + 0.5 * c * h * h + lamda * h
 
         total_loss.backward()
         clip_grad_value_(model.parameters(), 1)
@@ -219,6 +221,7 @@ for _ in range(30):
     loss_test = []
     with torch.no_grad():
         for x in test_loader:
+            # print(x.shape)
             x = x.to(device)
             loss = -model.test(x, A.data).cpu().numpy()
             loss_test.append(loss)
@@ -228,6 +231,10 @@ for _ in range(30):
     loss_test = np.nan_to_num(loss_test)
     roc_val = roc_auc_score(np.asarray(val_loader.dataset.label.values, dtype=int), loss_val)
     roc_test = roc_auc_score(np.asarray(test_loader.dataset.label.values, dtype=int), loss_test)
+    # print('loss val',loss_val.shape)
+    # print('loss test',loss_test.shape)
+    # print('label val',np.asarray(val_loader.dataset.label.values, dtype=int).shape)
+    # print('label test',np.asarray(test_loader.dataset.label.values, dtype=int).shape)
     print('Epoch: {}, train -log_prob: {:.2f}, test -log_prob: {:.2f}, roc_val: {:.4f}, roc_test: {:.4f} ,h: {}' \
           .format(epoch, np.mean(loss_train), np.mean(loss_val), roc_val, roc_test, h.item()))
 
