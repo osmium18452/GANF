@@ -10,6 +10,26 @@ from sklearn.metrics import roc_auc_score
 
 # from data import fetch_dataloaders
 
+def calculate_f1(labels,scores,anomaly_ratio=None):
+    if anomaly_ratio is None:
+        abnormal_points_number=int(np.sum(labels))
+    else:
+        abnormal_points_number = int(anomaly_ratio * len(labels))
+    abnormal_ranking = np.argsort(scores)[::-1]
+    abnormal_points = abnormal_ranking[:abnormal_points_number]
+    predicted_labels = np.zeros(labels.shape, dtype=float)
+    predicted_labels[abnormal_points] = 1.
+    tp = np.where((predicted_labels == 1) & (labels == 1), 1., 0.).sum()
+    fp = np.where((predicted_labels == 1) & (labels == 0), 1., 0.).sum()
+    tn = np.where((predicted_labels == 0) & (labels == 0), 1., 0.).sum()
+    fn = np.where((predicted_labels == 0) & (labels == 1), 1., 0.).sum()
+    print('\033[0;34mtp,fp,tn,fn',tp,fp,tn,fn,'\033[0m')
+    recall = tp / (tp + fn)
+    precision = tp / (tp + fp)
+    f1 = 2 * precision * recall / (precision + recall)
+    return recall,precision,f1
+
+
 
 parser = argparse.ArgumentParser()
 # files
@@ -65,8 +85,19 @@ from dataset import load_water
 # train_loader, val_loader, test_loader, n_sensor = load_water(args.data_dir, args.batch_size)
 # pickle.dump((train_loader,val_loader,test_loader,n_sensor),open('water_data_loader.pkl','wb'))
 (train_loader,val_loader,test_loader,n_sensor)=pickle.load(open('water_data_loader.pkl','rb'))
-print(train_loader.dataset)
-print('\033[0;33m',type(train_loader),type(val_loader),type(test_loader),n_sensor,'\033[0m')
+# train_set_size=0
+# for i in train_loader:
+#     train_set_size+=i.shape[0]
+# test_set_size=0
+# for i in test_loader:
+#     test_set_size+=i.shape[0]
+# val_set_size=0
+# for i in val_loader:
+#     val_set_size+=i.shape[0]
+# print('train, test, val set size', train_set_size,test_set_size,val_set_size)
+# print(train_loader.dataset)
+# print('\033[0;33m',type(train_loader),type(val_loader),type(test_loader),n_sensor,'\033[0m')
+# exit()
 
 c = args.rho_init
 lamda = args.alpha_init
@@ -92,6 +123,9 @@ A = torch.tensor(init, requires_grad=True, device=device)
 
 # %%
 model = GANF(args.n_blocks, 1, args.hidden_size, args.n_hidden, dropout=0.0, batch_norm=args.batch_norm)
+# print(model)
+# print(args.n_blocks, args.n_hidden,args.hidden_size)
+# exit()
 model = model.to(device)
 
 if args.model != 'None':
@@ -117,7 +151,6 @@ for _ in range(max_iter):
             {'params': [A]}], lr=lr, weight_decay=0.0)
 
         for _ in range(args.n_epochs):
-
             # train iteration
             loss_train = []
             epoch += 1
@@ -143,6 +176,8 @@ for _ in range(max_iter):
             with torch.no_grad():
                 for x in val_loader:
                     x = x.to(device)
+                    # print(model.test(x,A.data))
+                    # exit()
                     loss = -model.test(x, A.data).cpu().numpy()
                     loss_val.append(loss)
             loss_val = np.concatenate(loss_val)
@@ -160,6 +195,11 @@ for _ in range(max_iter):
             loss_val = np.nan_to_num(loss_val)
             loss_test = np.nan_to_num(loss_test)
             roc_val = roc_auc_score(np.asarray(val_loader.dataset.label.values, dtype=int), loss_val)
+            # print(np.asarray(val_loader.dataset.label.values, dtype=int))
+            # print(np.sum(np.asarray(val_loader.dataset.label.values, dtype=int)))
+            # print(np.asarray(val_loader.dataset.label.values, dtype=int).shape)
+            # print(loss_val.shape)
+            # exit()
             roc_test = roc_auc_score(np.asarray(test_loader.dataset.label.values, dtype=int), loss_test)
             print('Epoch: {}, train -log_prob: {:.2f}, test -log_prob: {:.2f}, roc_val: {:.4f}, roc_test: {:.4f} ,h: {}' \
                   .format(epoch, np.mean(loss_train), np.mean(loss_val), roc_val, roc_test, h.item()))
@@ -229,14 +269,25 @@ for _ in range(30):
 
     loss_val = np.nan_to_num(loss_val)
     loss_test = np.nan_to_num(loss_test)
+    # print(np.max(loss_val),np.min(loss_val))
+    # exit()
     roc_val = roc_auc_score(np.asarray(val_loader.dataset.label.values, dtype=int), loss_val)
     roc_test = roc_auc_score(np.asarray(test_loader.dataset.label.values, dtype=int), loss_test)
+    val_recall,val_precision,val_f1=calculate_f1(np.asarray(val_loader.dataset.label.values, dtype=int), loss_val,None)
+    test_recall,test_precision,test_f1=calculate_f1(np.asarray(test_loader.dataset.label.values, dtype=int), loss_test,None)
     # print('loss val',loss_val.shape)
     # print('loss test',loss_test.shape)
-    # print('label val',np.asarray(val_loader.dataset.label.values, dtype=int).shape)
-    # print('label test',np.asarray(test_loader.dataset.label.values, dtype=int).shape)
+    # val_label=np.asarray(val_loader.dataset.label.values, dtype=int)
+    # print('label val',np.min(val_label),np.max(val_label),np.sum(val_label))
+    # print(val_label)
+    # print(np.unique(val_label))
+    # print(val_label.shape)
+    # exit()
+    # print('label test',np.asarray(test_loader.dataset.label.values, dtype=int))
     print('Epoch: {}, train -log_prob: {:.2f}, test -log_prob: {:.2f}, roc_val: {:.4f}, roc_test: {:.4f} ,h: {}' \
           .format(epoch, np.mean(loss_train), np.mean(loss_val), roc_val, roc_test, h.item()))
+    print('val,recall:{},precision:{},f1:{}'.format(val_recall,val_precision,val_f1))
+    print('test,recall:{},precision:{},f1:{}'.format(test_recall,test_precision,test_f1))
 
     if np.mean(loss_val) < loss_best:
         loss_best = np.mean(loss_val)
